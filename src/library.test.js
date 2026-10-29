@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { validateEntry, filterEntries, mergeImportedEntries } from './library.js';
 import { seedEntries } from './seed.js';
+import { comicsEntries } from './comics-seed.js';
 const entry = { title:' Dune ', creator:'Frank Herbert', category:'Books', status:'Reading', progress:20, total:100, createdAt:1 };
 test('validates progress and normalizes completed stories', () => {
   assert.equal(validateEntry(entry).title, 'Dune');
@@ -46,4 +47,23 @@ test('import is repeatable and preserves existing edits and matching stories', (
   assert.deepEqual(mergeImportedEntries(result,seedEntries),result);
   const sameStory = {...seedEntries[0], id:'previously-added'};
   assert.equal(mergeImportedEntries([sameStory],seedEntries).length,242);
+});
+
+test('Comic Geeks import preserves issue variants and independent collection flags', () => {
+  assert.equal(comicsEntries.length,419);
+  assert.equal(new Set(comicsEntries.map(e => e.id)).size,419);
+  assert.equal(comicsEntries.filter(e => e.owned).length,396);
+  assert.equal(comicsEntries.filter(e => e.wishlisted).length,21);
+  assert.equal(comicsEntries.filter(e => e.status === 'Completed').length,280);
+  for (const e of comicsEntries) {
+    assert.deepEqual(validateEntry(e),e);
+    assert.equal(e.category,'Comics');
+    assert.equal(e.title,e.comicGeeks.C);
+    assert.equal(e.progress,Number(e.comicGeeks.G));
+    assert.equal(e.creator,'');
+  }
+  const combined=mergeImportedEntries(seedEntries,comicsEntries);
+  assert.equal(combined.length,661);
+  assert.deepEqual(mergeImportedEntries(combined,comicsEntries),combined);
+  assert.equal(filterEntries(comicsEntries,'Comics','all','DC Comics','title').every(e => e.publisher === 'DC Comics'),true);
 });

@@ -8,7 +8,7 @@ export function validateEntry(entry) {
   return { ...entry, title: entry.title.trim(), progress: entry.status === 'Completed' && entry.total !== null ? entry.total : entry.progress };
 }
 export function filterEntries(entries, category, status, search, sort) {
-  return entries.filter(e => (category === 'all' || e.category === category) && (status === 'all' || e.status === status) && `${e.title} ${e.creator}`.toLowerCase().includes(search.toLowerCase())).sort((a,b) => sort === 'title' ? a.title.localeCompare(b.title) : b.createdAt - a.createdAt);
+  return entries.filter(e => (category === 'all' || e.category === category) && (status === 'all' || e.status === status) && `${e.title} ${e.creator} ${e.series || ''} ${e.publisher || ''}`.toLowerCase().includes(search.toLowerCase())).sort((a,b) => sort === 'title' ? a.title.localeCompare(b.title) : b.createdAt - a.createdAt);
 }
 
 export function mergeImportedEntries(existing, incoming) {

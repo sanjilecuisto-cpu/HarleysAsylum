@@ -1,5 +1,6 @@
 import { validateEntry, filterEntries, mergeImportedEntries } from './library.js';
 import { seedEntries } from './seed.js';
+import { comicsEntries } from './comics-seed.js';
 const $ = s => document.querySelector(s);
 const key = 'harleys-asylum-library-v1';
 let entries = [], category = 'all', status = 'all', editing = null;
@@ -7,14 +8,15 @@ let storageLoaded = false;
 try { const saved = JSON.parse(localStorage.getItem(key) || '[]'); if (!Array.isArray(saved)) throw Error(); entries = saved.map(validateEntry); storageLoaded = true; } catch { notify('Saved collection could not be loaded. Your original data has not been changed.'); }
 if (storageLoaded) {
   try {
-    const importedKey = 'harleys-asylum-sheet-import-v1';
+    for (const [importedKey, incoming] of [['harleys-asylum-sheet-import-v1', seedEntries], ['harleys-asylum-comicgeeks-import-v1', comicsEntries]]) {
     if (!localStorage.getItem(importedKey)) {
-      const merged = mergeImportedEntries(entries, seedEntries.map(validateEntry));
+      const merged = mergeImportedEntries(entries, incoming.map(validateEntry));
       localStorage.setItem(key, JSON.stringify(merged));
       localStorage.setItem(importedKey, 'done');
       const added = merged.length - entries.length;
       entries = merged;
       if (added) notify(`Imported ${added} stories from your spreadsheet.`);
+    }
     }
   } catch { notify('Spreadsheet import could not be saved. Please check browser storage settings.'); }
 }
@@ -38,6 +40,7 @@ function render() {
     const progress = element('div', 'progress'); const bar = element('span', ''); bar.style.width = `${entry.status === 'Completed' ? 100 : entry.total ? entry.progress / entry.total * 100 : 0}%`; progress.append(bar);
     const unit = entry.unit || (entry.category === 'Books' ? 'pages' : entry.category === 'Comics' ? 'issues' : 'chapters');
     body.append(progress, element('p', 'progress-label', `${entry.progress}${entry.total ? ` / ${entry.total}` : ''} ${unit}${entry.progressKind === 'reread' ? ' reread' : ''}`));
+    if (entry.category === 'Comics' && entry.comicGeeks) body.append(element('p', 'comic-collection', `${entry.owned ? 'Owned' : 'Not owned'}${entry.wishlisted ? ' · Wishlisted' : ''}${entry.rating !== null ? ` · ★ ${entry.rating}/5` : ''}`));
     if (entry.notes) body.append(element('p', 'notes', entry.notes));
     if (entry.volumes?.length) {
       const details = element('details', 'volume-details');
