@@ -21,3 +21,20 @@ export function mergeImportedEntries(existing, incoming) {
   });
   return [...existing, ...additions];
 }
+
+export function collectionStats(entries, category = 'all') {
+  const scoped = entries.filter(e => category === 'all' || e.category === category);
+  const statuses = Object.fromEntries(['Want to read', 'Reading', 'Completed'].map(s => [s, scoped.filter(e => e.status === s).length]));
+  const categories = Object.fromEntries(['Books', 'Comics', 'Manga'].map(c => [c, scoped.filter(e => e.category === c).length]));
+  const ratings = scoped.map(e => e.rating).filter(r => typeof r === 'number' && Number.isFinite(r));
+  const progress = {};
+  for (const e of scoped) {
+    const unit = e.unit === 'issue' ? 'issues' : e.unit || (e.category === 'Books' ? 'pages' : e.category === 'Comics' ? 'issues' : 'chapters');
+    const label = `${unit} read`;
+    if (!progress[label]) progress[label] = { current: 0, total: 0, unknownTotals: 0 };
+    progress[label].current += e.progress;
+    if (e.total !== null) progress[label].total += e.total;
+    else progress[label].unknownTotals++;
+  }
+  return { total: scoped.length, statuses, categories, progress, owned: scoped.reduce((sum,e) => sum + (typeof e.owned === 'number' ? e.owned : e.owned === true ? 1 : 0), 0), ownershipUnknown: scoped.filter(e => e.owned === undefined).length, wishlisted: scoped.filter(e => e.wishlisted === true).length, ratingCount: ratings.length, averageRating: ratings.length ? ratings.reduce((a,b) => a+b,0) / ratings.length : null, completion: scoped.length ? Math.round(statuses.Completed / scoped.length * 100) : 0 };
+}

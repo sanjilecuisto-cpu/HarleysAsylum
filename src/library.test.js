@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateEntry, filterEntries, mergeImportedEntries } from './library.js';
+import { validateEntry, filterEntries, mergeImportedEntries, collectionStats } from './library.js';
 import { seedEntries } from './seed.js';
 import { comicsEntries } from './comics-seed.js';
 const entry = { title:' Dune ', creator:'Frank Herbert', category:'Books', status:'Reading', progress:20, total:100, createdAt:1 };
@@ -21,7 +21,7 @@ test('combines category, status and creator search without mutating collection',
   assert.equal(entries[0].title,' Dune ');
 });
 
-test('spreadsheet import preserves editions, owned volumes and reread counts', () => {
+test('spreadsheet import preserves editions, owned volumes and read counts', () => {
   assert.equal(seedEntries.length, 242);
   assert.equal(new Set(seedEntries.map(e => e.id)).size, 242);
   assert.equal(seedEntries.reduce((sum,e) => sum + e.total, 0), 1215);
@@ -66,4 +66,24 @@ test('Comic Geeks import preserves issue variants and independent collection fla
   assert.equal(combined.length,661);
   assert.deepEqual(mergeImportedEntries(combined,comicsEntries),combined);
   assert.equal(filterEntries(comicsEntries,'Comics','all','DC Comics','title').every(e => e.publisher === 'DC Comics'),true);
+});
+
+test('statistics separate units, reading, known ownership, ratings and category scopes', () => {
+  const all=[...seedEntries,...comicsEntries];
+  const stats=collectionStats(all);
+  assert.equal(stats.total,661);
+  assert.equal(stats.owned,1611);
+  assert.equal(stats.wishlisted,21);
+  assert.equal(stats.progress['volumes read'].current,454);
+  assert.equal(stats.progress['volumes read'].total,1215);
+  assert.equal(stats.progress['issues read'].current,280);
+  const comics=collectionStats(all,'Comics');
+  assert.equal(comics.total,419);assert.equal(comics.owned,396);
+  assert.equal(comics.statuses.Completed,280);
+  assert.equal(comics.categories.Manga,0);
+  assert.ok(comics.averageRating>0 && comics.averageRating<=5);
+  const empty=collectionStats([]);
+  assert.equal(empty.completion,0);assert.equal(empty.averageRating,null);
+  const custom=collectionStats([{...entry,total:null}]);
+  assert.equal(custom.ownershipUnknown,1);assert.equal(custom.progress['pages read'].unknownTotals,1);
 });
