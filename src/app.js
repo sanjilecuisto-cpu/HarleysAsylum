@@ -86,7 +86,7 @@ function renderSeriesPage() {
   if (!summary.total) issues.append(element('p','stats-explainer','No owned issues yet. Wishlist and unowned entries do not count toward completion.'));
   for(const entry of summary.owned) {
     const issue=element('article','owned-issue');issue.append(element('h3','',entry.title));
-    const variant=entry.variant || entry.title.match(/#\d+(?:\.\d+)?\s+(.+)$/)?.[1] || 'Not specified in export';
+    const variant=entry.variant || entry.title.match(/#\d+(?:\.\d+)?\s+(.+)$/)?.[1] || 'Cover A';
     const date=entry.releaseDate || entry.comicGeeks?.D || 'Not provided';
     const data=element('dl','issue-data');
     for(const [label,value] of [['Variant / cover',variant],['Release date',date],['Reading status',entry.status === 'Completed' ? 'Read' : entry.status === 'Reading' ? 'Reading' : 'Not read'],['Rating',typeof entry.rating === 'number' ? `${entry.rating} / 5` : 'Not rated']]) { data.append(element('dt','',label),element('dd','',value)); }
@@ -128,7 +128,7 @@ function openEditor(entry) {
   if(entry) for(const name of ['title','creator','series','publisher','category','status','progress','total','notes']) form.elements[name].value=entry[name] ?? '';
   else if(category!=='all') form.elements.category.value=category;
   form.elements.releaseDate.value=entry?.releaseDate || entry?.comicGeeks?.D || '';
-  form.elements.variant.value=entry?.variant || entry?.title.match(/#\d+(?:\.\d+)?\s+(.+)$/)?.[1] || '';
+  form.elements.variant.value=entry?.variant || entry?.title.match(/#\d+(?:\.\d+)?\s+(.+)$/)?.[1] || 'Cover A';
   form.elements.owned.checked=entry?.owned === true;
   form.elements.progress.previousSibling.textContent=entry?.progressKind === 'reread' ? 'Volumes read' : 'Progress';
   form.elements.total.previousSibling.textContent=entry?.unit === 'volumes' ? 'Owned volumes' : 'Total pages / issues / chapters';
