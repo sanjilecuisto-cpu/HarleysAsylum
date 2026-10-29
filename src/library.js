@@ -10,3 +10,14 @@ export function validateEntry(entry) {
 export function filterEntries(entries, category, status, search, sort) {
   return entries.filter(e => (category === 'all' || e.category === category) && (status === 'all' || e.status === status) && `${e.title} ${e.creator}`.toLowerCase().includes(search.toLowerCase())).sort((a,b) => sort === 'title' ? a.title.localeCompare(b.title) : b.createdAt - a.createdAt);
 }
+
+export function mergeImportedEntries(existing, incoming) {
+  const identity = e => [e.category, e.title.trim().toLocaleLowerCase(), (e.creator || '').trim().toLocaleLowerCase()].join('\u0000');
+  const ids = new Set(existing.map(e => e.id));
+  const identities = new Set(existing.map(identity));
+  const additions = incoming.filter(e => {
+    if (ids.has(e.id) || identities.has(identity(e))) return false;
+    ids.add(e.id); identities.add(identity(e)); return true;
+  });
+  return [...existing, ...additions];
+}
