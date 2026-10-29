@@ -1,4 +1,4 @@
-import { validateEntry, filterEntries, mergeImportedEntries, collectionStats, groupComics } from './library.js';
+import { validateEntry, filterEntries, mergeImportedEntries, collectionStats, comicSeries, seriesSummary, collectionItems } from './library.js';
 import { seedEntries } from './seed.js';
 import { comicsEntries } from './comics-seed.js';
 const $ = s => document.querySelector(s);
@@ -6,7 +6,7 @@ const key = 'harleys-asylum-library-v1';
 let entries = [], category = 'all', status = 'all', editing = null;
 let pageMode = 'collection', layout = 'grid';
 try { layout = localStorage.getItem('harleys-layout') === 'list' ? 'list' : 'grid'; } catch {}
-const expandedSeries = new Set();
+let selectedSeries = null;
 let storageLoaded = false;
 try { const saved = JSON.parse(localStorage.getItem(key) || '[]'); if (!Array.isArray(saved)) throw Error(); entries = saved.map(validateEntry); storageLoaded = true; } catch { notify('Saved collection could not be loaded. Your original data has not been changed.'); }
 if (storageLoaded) {
@@ -27,10 +27,14 @@ function notify(message) { $('#toast').textContent = message; $('#toast').classL
 function persist(next) { if (!storageLoaded) { notify('Saving is disabled to protect your unreadable saved collection.'); return false; } try { localStorage.setItem(key, JSON.stringify(next)); entries = next; render(); return true; } catch { notify('Unable to save. Please check your browser storage settings.'); return false; } }
 function element(tag, cls, text) { const e = document.createElement(tag); e.className = cls; if (text !== undefined) e.textContent = text; return e; }
 function render() {
-  for (const c of ['Books', 'Comics', 'Manga']) $(`#count-${c}`).textContent = entries.filter(e => e.category === c).length;
-  const scoped = entries.filter(e => category === 'all' || e.category === category);
+  const items = collectionItems(entries);
+  for (const c of ['Books', 'Comics', 'Manga']) $(`#count-${c}`).textContent = items.filter(e => e.category === c).length;
+  const scoped = items.filter(e => category === 'all' || e.category === category);
   $('#total').textContent = scoped.length; $('#reading').textContent = scoped.filter(e => e.status === 'Reading').length; $('#completed').textContent = scoped.filter(e => e.status === 'Completed').length;
-  $('.collection').hidden = pageMode === 'stats';
+  $('.collection').hidden = pageMode !== 'collection';
+  $('#series-page').hidden = pageMode !== 'series';
+  $('.stats').hidden = pageMode === 'series';
+  $('#add').hidden = pageMode === 'series';
   $('#stats-page').hidden = pageMode !== 'stats';
   $('#stats-nav').classList.toggle('active', pageMode === 'stats');
   document.querySelectorAll('[data-category]').forEach(b => b.classList.toggle('active', b.dataset.category === category));
@@ -40,40 +44,64 @@ function render() {
   $('#list-view').setAttribute('aria-pressed', String(layout === 'list'));
   $('#breadcrumb').textContent = category === 'all' ? 'Overview' : category;
   $('#heading').textContent = category === 'all' ? 'Your stories, all together.' : `Your ${category.toLowerCase()} collection.`;
+  if (pageMode === 'series') { renderSeriesPage(); return; }
   if (pageMode === 'stats') {
     $('#breadcrumb').textContent = `Statistics / ${category === 'all' ? 'All categories' : category}`;
     $('#heading').textContent = category === 'all' ? 'A little perspective on your stories.' : `${category} in numbers.`;
     renderStatistics();
     return;
   }
-  const shown = filterEntries(entries, category, status, $('#search').value, $('#sort').value);
-  $('#result-count').textContent = shown.length; $('#cards').replaceChildren(); $('#empty').hidden = shown.length > 0;
-  const groups = groupComics(shown);
-  if ($('#sort').value === 'title') groups.sort((a,b) => (a.title || a.entry.title).localeCompare(b.title || b.entry.title));
-  const seriesCount = groups.filter(g => g.type === 'series').length;
-  $('#result-count').textContent = seriesCount ? `${seriesCount} series · ${shown.length} entries` : shown.length;
-  for (const group of groups) {
-    if (group.type === 'entry') { $('#cards').append(renderCard(group.entry)); continue; }
-    const details = element('details', 'series-group');
-    details.open = expandedSeries.has(group.key);
-    details.addEventListener('toggle', () => { if (details.open) expandedSeries.add(group.key); else expandedSeries.delete(group.key); });
-    const summary = element('summary', 'series-summary');
-    const art = element('span', 'series-art', '✦');
-    const info = element('div', 'series-info');
-    info.append(element('span', 'series-publisher', group.publisher || 'COMICS'), element('h3', '', group.title));
-    const allIssues = entries.filter(e => e.category === 'Comics' && `${e.publisher || ''}\u0000${e.series?.trim()}` === group.key);
-    const read = allIssues.filter(e => e.status === 'Completed').length;
-    const owned = allIssues.filter(e => e.owned === true).length;
-    const wishlisted = allIssues.filter(e => e.wishlisted === true).length;
-    info.append(element('p', 'series-counts', `${allIssues.length} entries · ${read} read · ${owned} owned${wishlisted ? ` · ${wishlisted} wishlisted` : ''}`));
-    if (group.entries.length !== allIssues.length) info.append(element('p', 'series-matches', `${group.entries.length} matching current filters`));
-    const progress = element('div', 'progress'); const fill = element('span', ''); fill.style.width = `${read / allIssues.length * 100}%`; progress.append(fill); info.append(progress);
-    summary.append(art, info, element('span', 'series-chevron', '⌄'));
-    const issues = element('div', 'series-issues');
-    for (const entry of group.entries) issues.append(renderCard(entry));
-    details.append(summary, issues); $('#cards').append(details);
+  const shown = filterEntries(items, category, status, $('#search').value, $('#sort').value);
+  $('#result-count').textContent = shown.length;
+  $('#cards').replaceChildren(); $('#empty').hidden = shown.length > 0;
+  for (const entry of shown) {
+    if (!entry.group) { $('#cards').append(renderCard(entry)); continue; }
+    const group=entry.group, summary=seriesSummary(group);
+    const link=element('a','series-group series-link');link.href=`#series=${encodeURIComponent(group.key)}`;
+    const header=element('div','series-summary');const info=element('div','series-info');
+    info.append(element('span','series-publisher',group.publisher || 'COMICS'),element('h3','',group.title),element('p','series-counts',`${summary.read} / ${summary.total} owned issues read · ${summary.percent}%`));
+    info.append(element('span',`status ${summary.status === 'Completed' ? 'done' : summary.status === 'Reading' ? 'reading' : ''}`,summary.status));
+    const progress=element('div','progress');const fill=element('span','');fill.style.width=`${summary.percent}%`;progress.append(fill);info.append(progress);
+    header.append(element('span','series-art','✦'),info,element('span','series-chevron','↗'));link.append(header);$('#cards').append(link);
   }
 }
+function renderSeriesPage() {
+  const container=$('#series-page');container.replaceChildren();
+  const back=element('a','secondary series-back','← Back to Comics');back.href='#comics';container.append(back);
+  const group=comicSeries(entries).find(g=>g.key===selectedSeries);
+  if (!group) { $('#heading').textContent='Series not found.';container.append(element('p','stats-explainer','This series may have been renamed or removed. Return to Comics to browse your collection.'));return; }
+  $('#heading').textContent=group.title;$('#breadcrumb').textContent=`Comics / ${group.title}`;
+  const summary=seriesSummary(group);
+  const addIssue=element('button','primary series-add-issue','＋ Add owned issue');addIssue.onclick=()=>{openEditor();const form=$('#entry-form');form.elements.category.value='Comics';form.elements.series.value=group.title;form.elements.publisher.value=group.publisher;form.elements.owned.checked=true;form.elements.total.value=1;$('#comic-fields').hidden=false;};container.append(addIssue);
+  const metadata=element('section','series-overview');metadata.append(element('h2','','About this series'));
+  const formats=[...new Set(group.entries.map(e=>e.comicGeeks?.I).filter(Boolean))];
+  const dates=group.entries.map(e=>e.releaseDate || e.comicGeeks?.D).filter(Boolean).sort();
+  for(const [label,value] of [['Publisher',group.publisher || 'Not provided'],['Series / run',group.title],['Format',formats.join(', ') || 'Not provided'],['Release dates in your data',dates.length ? `${dates[0]} – ${dates.at(-1)}` : 'Not provided'],['Owned issues / variants',summary.total],['Wishlist entries',group.entries.filter(e=>e.wishlisted).length]]) {
+    const row=element('div','stat-detail');row.append(element('span','',label),element('strong','',String(value)));metadata.append(row);
+  }
+  const completion=element('section','series-completion');completion.append(element('h2','','Series completion'),element('strong','completion-number',`${summary.read} / ${summary.total}`),element('p','stats-explainer',`${summary.percent}% · read issues / owned issues. Each owned variant is counted separately.`));
+  const progress=element('div','progress');const fill=element('span','');fill.style.width=`${summary.percent}%`;progress.append(fill);completion.append(progress);
+  const overview=element('div','series-page-overview');overview.append(metadata,completion);container.append(overview,element('h2','owned-issues-title',`Owned issues (${summary.total})`));
+  const issues=element('div','owned-issue-list');
+  if (!summary.total) issues.append(element('p','stats-explainer','No owned issues yet. Wishlist and unowned entries do not count toward completion.'));
+  for(const entry of summary.owned) {
+    const issue=element('article','owned-issue');issue.append(element('h3','',entry.title));
+    const variant=entry.variant || entry.title.match(/#\d+(?:\.\d+)?\s+(.+)$/)?.[1] || 'Not specified in export';
+    const date=entry.releaseDate || entry.comicGeeks?.D || 'Not provided';
+    const data=element('dl','issue-data');
+    for(const [label,value] of [['Variant / cover',variant],['Release date',date],['Reading status',entry.status === 'Completed' ? 'Read' : entry.status === 'Reading' ? 'Reading' : 'Not read'],['Rating',typeof entry.rating === 'number' ? `${entry.rating} / 5` : 'Not rated']]) { data.append(element('dt','',label),element('dd','',value)); }
+    const actions=element('div','issue-actions');const toggle=element('button','secondary',entry.status==='Completed' ? 'Mark unread' : 'Mark read');
+    toggle.onclick=()=>persist(entries.map(e=>e.id===entry.id ? {...e,status:entry.status==='Completed' ? 'Want to read' : 'Completed',progress:entry.status==='Completed' ? 0 : (entry.total || 1)} : e));
+    const edit=element('button','secondary','Edit issue');edit.onclick=()=>openEditor(entry);actions.append(toggle,edit);issue.append(data,actions);issues.append(issue);
+  }
+  container.append(issues);
+  const unowned=group.entries.filter(e=>e.owned!==true);
+  if(unowned.length) {
+    const other=element('details','unowned-issues');other.append(element('summary','',`Other tracked issues (${unowned.length}) · not counted toward completion`));
+    const list=element('div','series-issues');for(const entry of unowned)list.append(renderCard(entry));other.append(list);container.append(other);
+  }
+}
+
 function renderCard(entry) {
     const card = element('article', 'card');
     const cover = element('div', `cover ${entry.category.toLowerCase()}`);
@@ -95,12 +123,24 @@ function renderCard(entry) {
     }
     const actions = element('div', 'card-actions'); const edit = element('button', '', 'Edit story ↗'); edit.addEventListener('click', () => openEditor(entry)); const del = element('button', 'delete', 'Delete'); del.addEventListener('click', () => { if (confirm(`Remove “${entry.title}” from your collection?`)) persist(entries.filter(e => e.id !== entry.id)); }); actions.append(edit, del); body.append(actions); card.append(cover, body); return card;
 }
-function openEditor(entry) { editing = entry?.id || null; $('#entry-form').reset(); $('#form-error').textContent = ''; $('#dialog-title').textContent = entry ? 'Edit your story' : 'Add to your collection'; if (entry) for (const name of ['title','creator','series','category','status','progress','total','notes']) $('#entry-form').elements[name].value = entry[name] ?? ''; else if (category !== 'all') $('#entry-form').elements.category.value = category; $('#entry-form').elements.progress.previousSibling.textContent = entry?.progressKind === 'reread' ? 'Volumes read' : 'Progress'; $('#entry-form').elements.total.previousSibling.textContent = entry?.unit === 'volumes' ? 'Owned volumes' : 'Total pages / issues / chapters'; $('#editor').showModal(); }
+function openEditor(entry) {
+  editing=entry?.id || null;const form=$('#entry-form');form.reset();$('#form-error').textContent='';$('#dialog-title').textContent=entry ? 'Edit your story' : 'Add to your collection';
+  if(entry) for(const name of ['title','creator','series','publisher','category','status','progress','total','notes']) form.elements[name].value=entry[name] ?? '';
+  else if(category!=='all') form.elements.category.value=category;
+  form.elements.releaseDate.value=entry?.releaseDate || entry?.comicGeeks?.D || '';
+  form.elements.variant.value=entry?.variant || entry?.title.match(/#\d+(?:\.\d+)?\s+(.+)$/)?.[1] || '';
+  form.elements.owned.checked=entry?.owned === true;
+  form.elements.progress.previousSibling.textContent=entry?.progressKind === 'reread' ? 'Volumes read' : 'Progress';
+  form.elements.total.previousSibling.textContent=entry?.unit === 'volumes' ? 'Owned volumes' : 'Total pages / issues / chapters';
+  $('#comic-fields').hidden=form.elements.category.value!=='Comics';$('#editor').showModal();
+}
+$('#entry-form').elements.category.onchange=event=>{ $('#comic-fields').hidden=event.target.value!=='Comics'; };
+
 $('#add').onclick = $('#empty-add').onclick = () => openEditor(); $('#close').onclick = $('#cancel').onclick = () => $('#editor').close();
-$('#entry-form').onsubmit = event => { event.preventDefault(); const form = event.currentTarget; const values = Object.fromEntries(new FormData(form)); try { const old = entries.find(e => e.id === editing); const entry = validateEntry({ ...old, ...values, id: editing || crypto.randomUUID(), createdAt: old?.createdAt || Date.now(), progress: Number(values.progress), total: values.total === '' ? null : Number(values.total) }); if (persist(editing ? entries.map(e => e.id === editing ? entry : e) : [...entries, entry])) { $('#editor').close(); notify('Your story is saved.'); } } catch (error) { $('#form-error').textContent = error.message; } };
-document.querySelectorAll('[data-category]').forEach(button => button.onclick = () => { category = button.dataset.category; render(); });
+$('#entry-form').onsubmit = event => { event.preventDefault(); const form = event.currentTarget; const values = Object.fromEntries(new FormData(form)); try { const old = entries.find(e => e.id === editing); const entry = validateEntry({ ...old, ...values, ...(values.category === 'Comics' ? {owned:form.elements.owned.checked,unit:'issue'} : {owned:old?.owned}), id: editing || crypto.randomUUID(), createdAt: old?.createdAt || Date.now(), progress: Number(values.progress), total: values.total === '' ? null : Number(values.total) }); if (persist(editing ? entries.map(e => e.id === editing ? entry : e) : [...entries, entry])) { $('#editor').close(); notify('Your story is saved.'); } } catch (error) { $('#form-error').textContent = error.message; } };
+document.querySelectorAll('[data-category]').forEach(button => button.onclick = () => { category = button.dataset.category; if(pageMode==='series')pageMode='collection';selectedSeries=null;history.replaceState(null,'',location.pathname+location.search);render(); });
 document.querySelectorAll('[data-status]').forEach(button => button.onclick = () => { status = button.dataset.status; document.querySelectorAll('[data-status]').forEach(b => b.classList.toggle('selected', b === button)); render(); });
-$('#search').oninput = render; $('#sort').onchange = render; render();
+$('#search').oninput = render; $('#sort').onchange = render;
 
 function renderStatistics() {
   const stats = collectionStats(entries, category);
@@ -127,8 +167,17 @@ function renderStatistics() {
     const row=element('div','stat-detail');row.append(element('span','',label),element('strong','',String(value)));$('#stats-details').append(row);
   }
 }
-$('#stats-nav').onclick = () => { pageMode = pageMode === 'stats' ? 'collection' : 'stats'; render(); };
+$('#stats-nav').onclick = () => { selectedSeries=null;history.replaceState(null,'',location.pathname+location.search);pageMode = pageMode === 'stats' ? 'collection' : 'stats'; render(); };
 $('#stats-category').onchange = event => { category = event.target.value; render(); };
 for (const [id,value] of [['grid-view','grid'],['list-view','list']]) $("#"+id).onclick = () => { layout=value;try { localStorage.setItem('harleys-layout',layout); } catch {} render(); };
 
 $('#back-collection').onclick = () => { pageMode = 'collection'; render(); };
+
+function readRoute() {
+  const match=location.hash.match(/^#series=(.*)$/);
+  if(match) { try { selectedSeries=decodeURIComponent(match[1]); } catch { selectedSeries=null; } category='Comics';pageMode='series'; }
+  else { selectedSeries=null;pageMode='collection';if(location.hash==='#comics')category='Comics'; }
+  render();
+}
+window.addEventListener('hashchange',readRoute);
+readRoute();

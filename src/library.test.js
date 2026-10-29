@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateEntry, filterEntries, mergeImportedEntries, collectionStats, groupComics } from './library.js';
+import { validateEntry, filterEntries, mergeImportedEntries, collectionStats, groupComics, comicSeries, seriesSummary, collectionItems } from './library.js';
 import { seedEntries } from './seed.js';
 import { comicsEntries } from './comics-seed.js';
 const entry = { title:' Dune ', creator:'Frank Herbert', category:'Books', status:'Reading', progress:20, total:100, createdAt:1 };
@@ -71,15 +71,15 @@ test('Comic Geeks import preserves issue variants and independent collection fla
 test('statistics separate units, reading, known ownership, ratings and category scopes', () => {
   const all=[...seedEntries,...comicsEntries];
   const stats=collectionStats(all);
-  assert.equal(stats.total,661);
+  assert.equal(stats.total,351);
   assert.equal(stats.owned,1611);
   assert.equal(stats.wishlisted,21);
   assert.equal(stats.progress['volumes read'].current,454);
   assert.equal(stats.progress['volumes read'].total,1215);
-  assert.equal(stats.progress['issues read'].current,280);
+  assert.equal(stats.progress['issues read'].current,277);
   const comics=collectionStats(all,'Comics');
-  assert.equal(comics.total,419);assert.equal(comics.owned,396);
-  assert.equal(comics.statuses.Completed,280);
+  assert.equal(comics.total,109);assert.equal(comics.owned,396);
+  assert.equal(comics.statuses.Completed,64);
   assert.equal(comics.categories.Manga,0);
   assert.ok(comics.averageRating>0 && comics.averageRating<=5);
   const empty=collectionStats([]);
@@ -102,4 +102,14 @@ test('comic grouping preserves issues and variants, separates publishers and run
   assert.equal(grouped[3].type,'entry');
   assert.equal(grouped[4].entry,entry);
   assert.equal(custom[0].title,'Issue #10');
+});
+
+test('series completion counts only owned issues, including owned variants', () => {
+  const base={...comicsEntries[0],series:'Test series',publisher:'Test'};
+  const issues=[{...base,id:'a',owned:true,status:'Completed'},{...base,id:'b',owned:true,status:'Want to read'},{...base,id:'c',owned:false,status:'Completed'},{...base,id:'d',owned:false,wishlisted:true,status:'Want to read'}];
+  const groups=comicSeries(issues);assert.equal(groups.length,1);
+  const summary=seriesSummary(groups[0]);assert.equal(summary.read,1);assert.equal(summary.total,2);assert.equal(summary.percent,50);assert.equal(summary.status,'Reading');
+  assert.equal(collectionItems(issues).length,1);
+  const none=seriesSummary({...groups[0],entries:issues.filter(e=>!e.owned)});assert.equal(none.percent,0);assert.equal(none.status,'Want to read');
+  assert.equal(seriesSummary({...groups[0],entries:[issues[0]]}).status,'Completed');
 });
