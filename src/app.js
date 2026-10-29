@@ -72,7 +72,7 @@ function renderSeriesPage() {
   if (!group) { $('#heading').textContent='Series not found.';container.append(element('p','stats-explainer','This series may have been renamed or removed. Return to Comics to browse your collection.'));return; }
   $('#heading').textContent=group.title;$('#breadcrumb').textContent=`Comics / ${group.title}`;
   const summary=seriesSummary(group);
-  const addIssue=element('button','primary series-add-issue','＋ Add owned issue');addIssue.onclick=()=>{openEditor();const form=$('#entry-form');form.elements.category.value='Comics';form.elements.series.value=group.title;form.elements.publisher.value=group.publisher;form.elements.owned.checked=true;form.elements.total.value=1;$('#comic-fields').hidden=false;};container.append(addIssue);
+  const addIssue=element('button','primary series-add-issue','＋ Add owned issue');addIssue.onclick=()=>{openEditor();const form=$('#entry-form');form.elements.category.value='Comics';form.elements.series.value=group.key;syncSeriesPublisher();form.elements.publisher.value=group.publisher;form.elements.owned.checked=true;form.elements.total.value=1;$('#comic-fields').hidden=false;};container.append(addIssue);
   const metadata=element('section','series-overview');metadata.append(element('h2','','About this series'));
   const formats=[...new Set(group.entries.map(e=>e.comicGeeks?.I).filter(Boolean))];
   const dates=group.entries.map(e=>e.releaseDate || e.comicGeeks?.D).filter(Boolean).sort();
@@ -125,19 +125,21 @@ function renderCard(entry) {
 }
 function openEditor(entry) {
   editing=entry?.id || null;const form=$('#entry-form');form.reset();$('#form-error').textContent='';$('#dialog-title').textContent=entry ? 'Edit your story' : 'Add to your collection';
-  if(entry) for(const name of ['title','creator','series','publisher','category','status','progress','total','notes']) form.elements[name].value=entry[name] ?? '';
+  populateSeries(entry);
+  $('#new-series-panel').hidden=true;$('#new-series').setAttribute('aria-expanded','false');$('#new-series-error').textContent='';
+  if(entry) for(const name of ['title','creator','publisher','category','status','progress','total','notes']) form.elements[name].value=entry[name] ?? '';
   else if(category!=='all') form.elements.category.value=category;
   form.elements.releaseDate.value=entry?.releaseDate || entry?.comicGeeks?.D || '';
   form.elements.variant.value=entry?.variant || entry?.title.match(/#\d+(?:\.\d+)?\s+(.+)$/)?.[1] || 'Cover A';
   form.elements.owned.checked=entry?.owned === true;
   form.elements.progress.previousSibling.textContent=entry?.progressKind === 'reread' ? 'Volumes read' : 'Progress';
   form.elements.total.previousSibling.textContent=entry?.unit === 'volumes' ? 'Owned volumes' : 'Total pages / issues / chapters';
-  $('#comic-fields').hidden=form.elements.category.value!=='Comics';$('#editor').showModal();
+  syncSeriesPublisher();$('#comic-fields').hidden=form.elements.category.value!=='Comics';$('#editor').showModal();
 }
 $('#entry-form').elements.category.onchange=event=>{ $('#comic-fields').hidden=event.target.value!=='Comics'; };
 
 $('#add').onclick = $('#empty-add').onclick = () => openEditor(); $('#close').onclick = $('#cancel').onclick = () => $('#editor').close();
-$('#entry-form').onsubmit = event => { event.preventDefault(); const form = event.currentTarget; const values = Object.fromEntries(new FormData(form)); try { const old = entries.find(e => e.id === editing); const entry = validateEntry({ ...old, ...values, ...(values.category === 'Comics' ? {owned:form.elements.owned.checked,unit:'issue'} : {owned:old?.owned}), id: editing || crypto.randomUUID(), createdAt: old?.createdAt || Date.now(), progress: Number(values.progress), total: values.total === '' ? null : Number(values.total) }); if (persist(editing ? entries.map(e => e.id === editing ? entry : e) : [...entries, entry])) { $('#editor').close(); notify('Your story is saved.'); } } catch (error) { $('#form-error').textContent = error.message; } };
+$('#entry-form').onsubmit = event => { event.preventDefault(); const form = event.currentTarget; const values = Object.fromEntries(new FormData(form)); const selected=form.elements.series.selectedOptions[0];values.series=selected?.dataset.series || '';if(values.category==='Comics' && values.series)values.publisher=selected.dataset.publisher || '';try { const old = entries.find(e => e.id === editing); const entry = validateEntry({ ...old, ...values, ...(values.category === 'Comics' ? {owned:form.elements.owned.checked,unit:'issue'} : {owned:old?.owned}), id: editing || crypto.randomUUID(), createdAt: old?.createdAt || Date.now(), progress: Number(values.progress), total: values.total === '' ? null : Number(values.total) }); if (persist(editing ? entries.map(e => e.id === editing ? entry : e) : [...entries, entry])) { $('#editor').close(); notify('Your story is saved.'); } } catch (error) { $('#form-error').textContent = error.message; } };
 document.querySelectorAll('[data-category]').forEach(button => button.onclick = () => { category = button.dataset.category; if(pageMode==='series')pageMode='collection';selectedSeries=null;history.replaceState(null,'',location.pathname+location.search);render(); });
 document.querySelectorAll('[data-status]').forEach(button => button.onclick = () => { status = button.dataset.status; document.querySelectorAll('[data-status]').forEach(b => b.classList.toggle('selected', b === button)); render(); });
 $('#search').oninput = render; $('#sort').onchange = render;
@@ -181,3 +183,33 @@ function readRoute() {
 }
 window.addEventListener('hashchange',readRoute);
 readRoute();
+
+function populateSeries(entry) {
+  const select=$('#series-select');select.replaceChildren(new Option('Choose a series…',''));
+  const groups=comicSeries(entries).filter(g=>!g.key.startsWith('standalone:')).sort((a,b)=>a.title.localeCompare(b.title));
+  for(const group of groups) {
+    const option=new Option(`${group.title}${group.publisher ? ' — '+group.publisher : ''}`,group.key);
+    option.dataset.series=group.title;option.dataset.publisher=group.publisher;select.append(option);
+    if(entry?.series?.trim()===group.title && (entry.publisher || '')===group.publisher)select.value=group.key;
+  }
+}
+function syncSeriesPublisher() {
+  const form=$('#entry-form'),option=form.elements.series.selectedOptions[0];
+  if(option?.dataset.series)form.elements.publisher.value=option.dataset.publisher || '';
+  form.elements.publisher.readOnly=Boolean(option?.dataset.series);
+}
+$('#series-select').onchange=syncSeriesPublisher;
+function closeSeriesCreator() { $('#new-series-panel').hidden=true;$('#new-series').setAttribute('aria-expanded','false');$('#series-select').focus(); }
+$('#new-series').onclick=()=>{
+  const panel=$('#new-series-panel');panel.hidden=!panel.hidden;$('#new-series').setAttribute('aria-expanded',String(!panel.hidden));
+  if(!panel.hidden){$('#new-series-name').value='';$('#new-series-publisher').value='';$('#new-series-error').textContent='';$('#new-series-name').focus();}
+};
+$('#cancel-series').onclick=closeSeriesCreator;
+$('#create-series').onclick=()=>{
+  const title=$('#new-series-name').value.trim(),publisher=$('#new-series-publisher').value.trim();
+  if(!title){$('#new-series-error').textContent='Enter a series name.';$('#new-series-name').focus();return;}
+  const select=$('#series-select');
+  let option=[...select.options].find(o=>o.dataset.series?.toLocaleLowerCase()===title.toLocaleLowerCase() && (o.dataset.publisher || '').toLocaleLowerCase()===publisher.toLocaleLowerCase());
+  if(!option){option=new Option(`${title}${publisher ? ' — '+publisher : ''}`,`${publisher}\u0000${title}`);option.dataset.series=title;option.dataset.publisher=publisher;select.append(option);}
+  select.value=option.value;syncSeriesPublisher();closeSeriesCreator();
+};
