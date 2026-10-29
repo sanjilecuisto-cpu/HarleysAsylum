@@ -89,10 +89,27 @@ function renderSeriesPage() {
     const variant=entry.variant || entry.title.match(/#\d+(?:\.\d+)?\s+(.+)$/)?.[1] || 'Cover A';
     const date=entry.releaseDate || entry.comicGeeks?.D || 'Not provided';
     const data=element('dl','issue-data');
-    for(const [label,value] of [['Variant / cover',variant],['Release date',date],['Reading status',entry.status === 'Completed' ? 'Read' : entry.status === 'Reading' ? 'Reading' : 'Not read'],['Rating',typeof entry.rating === 'number' ? `${entry.rating} / 5` : 'Not rated']]) { data.append(element('dt','',label),element('dd','',value)); }
-    const actions=element('div','issue-actions');const toggle=element('button','secondary',entry.status==='Completed' ? 'Mark unread' : 'Mark read');
-    toggle.onclick=()=>persist(entries.map(e=>e.id===entry.id ? {...e,status:entry.status==='Completed' ? 'Want to read' : 'Completed',progress:entry.status==='Completed' ? 0 : (entry.total || 1)} : e));
-    const edit=element('button','secondary','Edit issue');edit.onclick=()=>openEditor(entry);actions.append(toggle,edit);issue.append(data,actions);issues.append(issue);
+    for(const [label,value] of [['Variant / cover',variant],['Release date',date]]) { data.append(element('dt','',label),element('dd','',value)); }
+    const rating=element('dd','issue-rating');
+    const rated=typeof entry.rating==='number' && Number.isFinite(entry.rating);
+    const stars=element('span','rating-stars');stars.setAttribute('role','img');stars.setAttribute('aria-label',rated ? `${entry.rating} out of 5 stars` : 'Not rated');stars.title=rated ? `${entry.rating} / 5` : 'Not rated';
+    for(let i=0;i<5;i++) {
+      const star=element('span','rating-star','★');star.setAttribute('aria-hidden','true');
+      const fill=element('span','rating-star-fill','★');fill.style.width=`${rated ? Math.max(0,Math.min(1,entry.rating-i))*100 : 0}%`;star.append(fill);stars.append(star);
+    }
+    rating.append(stars);if(!rated)rating.append(element('span','unrated-label','Not rated'));data.append(element('dt','','Rating'),rating);
+    const edit=element('button','issue-edit');edit.type='button';edit.setAttribute('aria-label',`Edit issue: ${entry.title}`);edit.title='Edit issue';
+    edit.innerHTML='<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 3 5 5-12 12-6 1 1-6Z"/><path d="m14 5 5 5"/></svg>';
+    edit.onclick=()=>openEditor(entry);
+    const readLabel=element('label','issue-read-toggle');const checkbox=element('input','issue-read-input');checkbox.type='checkbox';checkbox.checked=entry.status==='Completed';checkbox.dataset.issueId=entry.id;checkbox.setAttribute('aria-label',`Read: ${entry.title}`);
+    const check=element('span','issue-check','✓');check.setAttribute('aria-hidden','true');const readCopy=element('span','issue-read-copy',checkbox.checked ? 'Read' : entry.status==='Reading' ? 'Reading · mark as read' : 'Mark as read');
+    checkbox.onchange=()=>{
+      const checked=checkbox.checked;
+      if(persist(entries.map(e=>e.id===entry.id ? {...e,status:checked ? 'Completed' : 'Want to read',progress:checked ? (entry.total || 1) : 0} : e))) {
+        [...document.querySelectorAll('.issue-read-input')].find(e=>e.dataset.issueId===entry.id)?.focus({preventScroll:true});
+      } else checkbox.checked=entry.status==='Completed';
+    };
+    readLabel.append(checkbox,check,readCopy);issue.append(edit,data,readLabel);issues.append(issue);
   }
   container.append(issues);
   const unowned=group.entries.filter(e=>e.owned!==true);
