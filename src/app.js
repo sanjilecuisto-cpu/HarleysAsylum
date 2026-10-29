@@ -1,4 +1,4 @@
-import { validateEntry, filterEntries, mergeImportedEntries, collectionStats } from './library.js';
+import { validateEntry, filterEntries, mergeImportedEntries, collectionStats, groupComics } from './library.js';
 import { seedEntries } from './seed.js';
 import { comicsEntries } from './comics-seed.js';
 const $ = s => document.querySelector(s);
@@ -6,6 +6,7 @@ const key = 'harleys-asylum-library-v1';
 let entries = [], category = 'all', status = 'all', editing = null;
 let pageMode = 'collection', layout = 'grid';
 try { layout = localStorage.getItem('harleys-layout') === 'list' ? 'list' : 'grid'; } catch {}
+const expandedSeries = new Set();
 let storageLoaded = false;
 try { const saved = JSON.parse(localStorage.getItem(key) || '[]'); if (!Array.isArray(saved)) throw Error(); entries = saved.map(validateEntry); storageLoaded = true; } catch { notify('Saved collection could not be loaded. Your original data has not been changed.'); }
 if (storageLoaded) {
@@ -47,7 +48,33 @@ function render() {
   }
   const shown = filterEntries(entries, category, status, $('#search').value, $('#sort').value);
   $('#result-count').textContent = shown.length; $('#cards').replaceChildren(); $('#empty').hidden = shown.length > 0;
-  for (const entry of shown) {
+  const groups = groupComics(shown);
+  if ($('#sort').value === 'title') groups.sort((a,b) => (a.title || a.entry.title).localeCompare(b.title || b.entry.title));
+  const seriesCount = groups.filter(g => g.type === 'series').length;
+  $('#result-count').textContent = seriesCount ? `${seriesCount} series · ${shown.length} entries` : shown.length;
+  for (const group of groups) {
+    if (group.type === 'entry') { $('#cards').append(renderCard(group.entry)); continue; }
+    const details = element('details', 'series-group');
+    details.open = expandedSeries.has(group.key);
+    details.addEventListener('toggle', () => { if (details.open) expandedSeries.add(group.key); else expandedSeries.delete(group.key); });
+    const summary = element('summary', 'series-summary');
+    const art = element('span', 'series-art', '✦');
+    const info = element('div', 'series-info');
+    info.append(element('span', 'series-publisher', group.publisher || 'COMICS'), element('h3', '', group.title));
+    const allIssues = entries.filter(e => e.category === 'Comics' && `${e.publisher || ''}\u0000${e.series?.trim()}` === group.key);
+    const read = allIssues.filter(e => e.status === 'Completed').length;
+    const owned = allIssues.filter(e => e.owned === true).length;
+    const wishlisted = allIssues.filter(e => e.wishlisted === true).length;
+    info.append(element('p', 'series-counts', `${allIssues.length} entries · ${read} read · ${owned} owned${wishlisted ? ` · ${wishlisted} wishlisted` : ''}`));
+    if (group.entries.length !== allIssues.length) info.append(element('p', 'series-matches', `${group.entries.length} matching current filters`));
+    const progress = element('div', 'progress'); const fill = element('span', ''); fill.style.width = `${read / allIssues.length * 100}%`; progress.append(fill); info.append(progress);
+    summary.append(art, info, element('span', 'series-chevron', '⌄'));
+    const issues = element('div', 'series-issues');
+    for (const entry of group.entries) issues.append(renderCard(entry));
+    details.append(summary, issues); $('#cards').append(details);
+  }
+}
+function renderCard(entry) {
     const card = element('article', 'card');
     const cover = element('div', `cover ${entry.category.toLowerCase()}`);
     cover.append(element('span', 'cover-category', entry.category === 'Books' ? 'THE BOOKSHELF' : entry.category === 'Comics' ? 'ILLUSTRATED WORLDS' : '物語 · MANGA'), element('span', 'cover-art', entry.category === 'Books' ? '✳' : entry.category === 'Comics' ? '✦' : '◉'), element('h3', '', entry.title), element('span', 'cover-author', entry.creator || 'A story waiting for you'));
@@ -66,10 +93,9 @@ function render() {
       details.append(list, element('p', 'volume-note', 'Volume details reflect the spreadsheet snapshot. Editing the story’s progress updates its overall counter.'));
       body.append(details);
     }
-    const actions = element('div', 'card-actions'); const edit = element('button', '', 'Edit story ↗'); edit.addEventListener('click', () => openEditor(entry)); const del = element('button', 'delete', 'Delete'); del.addEventListener('click', () => { if (confirm(`Remove “${entry.title}” from your collection?`)) persist(entries.filter(e => e.id !== entry.id)); }); actions.append(edit, del); body.append(actions); card.append(cover, body); $('#cards').append(card);
-  }
+    const actions = element('div', 'card-actions'); const edit = element('button', '', 'Edit story ↗'); edit.addEventListener('click', () => openEditor(entry)); const del = element('button', 'delete', 'Delete'); del.addEventListener('click', () => { if (confirm(`Remove “${entry.title}” from your collection?`)) persist(entries.filter(e => e.id !== entry.id)); }); actions.append(edit, del); body.append(actions); card.append(cover, body); return card;
 }
-function openEditor(entry) { editing = entry?.id || null; $('#entry-form').reset(); $('#form-error').textContent = ''; $('#dialog-title').textContent = entry ? 'Edit your story' : 'Add to your collection'; if (entry) for (const name of ['title','creator','category','status','progress','total','notes']) $('#entry-form').elements[name].value = entry[name] ?? ''; else if (category !== 'all') $('#entry-form').elements.category.value = category; $('#entry-form').elements.progress.previousSibling.textContent = entry?.progressKind === 'reread' ? 'Volumes read' : 'Progress'; $('#entry-form').elements.total.previousSibling.textContent = entry?.unit === 'volumes' ? 'Owned volumes' : 'Total pages / issues / chapters'; $('#editor').showModal(); }
+function openEditor(entry) { editing = entry?.id || null; $('#entry-form').reset(); $('#form-error').textContent = ''; $('#dialog-title').textContent = entry ? 'Edit your story' : 'Add to your collection'; if (entry) for (const name of ['title','creator','series','category','status','progress','total','notes']) $('#entry-form').elements[name].value = entry[name] ?? ''; else if (category !== 'all') $('#entry-form').elements.category.value = category; $('#entry-form').elements.progress.previousSibling.textContent = entry?.progressKind === 'reread' ? 'Volumes read' : 'Progress'; $('#entry-form').elements.total.previousSibling.textContent = entry?.unit === 'volumes' ? 'Owned volumes' : 'Total pages / issues / chapters'; $('#editor').showModal(); }
 $('#add').onclick = $('#empty-add').onclick = () => openEditor(); $('#close').onclick = $('#cancel').onclick = () => $('#editor').close();
 $('#entry-form').onsubmit = event => { event.preventDefault(); const form = event.currentTarget; const values = Object.fromEntries(new FormData(form)); try { const old = entries.find(e => e.id === editing); const entry = validateEntry({ ...old, ...values, id: editing || crypto.randomUUID(), createdAt: old?.createdAt || Date.now(), progress: Number(values.progress), total: values.total === '' ? null : Number(values.total) }); if (persist(editing ? entries.map(e => e.id === editing ? entry : e) : [...entries, entry])) { $('#editor').close(); notify('Your story is saved.'); } } catch (error) { $('#form-error').textContent = error.message; } };
 document.querySelectorAll('[data-category]').forEach(button => button.onclick = () => { category = button.dataset.category; render(); });

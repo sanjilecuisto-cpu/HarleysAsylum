@@ -23,3 +23,5 @@ The supplied Comic Geeks export adds 419 individual issues/variants once per bro
 ## Statistics and layouts
 
 Open Statistics in the sidebar for global or category-filtered metrics, reading-status and category breakdowns, owned quantities, wishlist counts, ratings, and reading progress grouped by unit. The category dropdown and sidebar both filter statistics; Back to collection returns to the selected category. Tiles/List switches collection layout and remembers the preference in this browser.
+
+Comics are grouped by their exported series and publisher in both Overview and Comics. Expand a series to browse, edit, or delete individual issues and variants. Series summaries retain overall counts while searches and reading filters show only matching issues. Entries without a series remain standalone. Statistics still count individual comic entries.

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateEntry, filterEntries, mergeImportedEntries, collectionStats } from './library.js';
+import { validateEntry, filterEntries, mergeImportedEntries, collectionStats, groupComics } from './library.js';
 import { seedEntries } from './seed.js';
 import { comicsEntries } from './comics-seed.js';
 const entry = { title:' Dune ', creator:'Frank Herbert', category:'Books', status:'Reading', progress:20, total:100, createdAt:1 };
@@ -86,4 +86,20 @@ test('statistics separate units, reading, known ownership, ratings and category 
   assert.equal(empty.completion,0);assert.equal(empty.averageRating,null);
   const custom=collectionStats([{...entry,total:null}]);
   assert.equal(custom.ownershipUnknown,1);assert.equal(custom.progress['pages read'].unknownTotals,1);
+});
+
+test('comic grouping preserves issues and variants, separates publishers and runs, and keeps standalone entries', () => {
+  const groups=groupComics(comicsEntries);
+  assert.ok(groups.length<419);
+  assert.equal(groups.flatMap(g=>g.entries || [g.entry]).length,419);
+  const batman=groups.find(g=>g.title==='Absolute Batman (2024 - Present)');
+  assert.ok(batman.entries.length>1);
+  assert.ok(batman.entries.some(e=>e.title.includes('Variant')));
+  const custom=[{...comicsEntries[0],title:'Issue #10',series:'Run'},{...comicsEntries[0],title:'Issue #2',series:'Run'},{...comicsEntries[0],publisher:'Other',series:'Run'},{...comicsEntries[0],series:'Run (2020)'},{...comicsEntries[0],series:''},entry];
+  const grouped=groupComics(custom);
+  assert.equal(grouped.length,5);
+  assert.equal(grouped[0].entries[0].title,'Issue #2');
+  assert.equal(grouped[3].type,'entry');
+  assert.equal(grouped[4].entry,entry);
+  assert.equal(custom[0].title,'Issue #10');
 });

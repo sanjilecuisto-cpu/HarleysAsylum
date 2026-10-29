@@ -38,3 +38,22 @@ export function collectionStats(entries, category = 'all') {
   }
   return { total: scoped.length, statuses, categories, progress, owned: scoped.reduce((sum,e) => sum + (typeof e.owned === 'number' ? e.owned : e.owned === true ? 1 : 0), 0), ownershipUnknown: scoped.filter(e => e.owned === undefined).length, wishlisted: scoped.filter(e => e.wishlisted === true).length, ratingCount: ratings.length, averageRating: ratings.length ? ratings.reduce((a,b) => a+b,0) / ratings.length : null, completion: scoped.length ? Math.round(statuses.Completed / scoped.length * 100) : 0 };
 }
+
+export function groupComics(entries) {
+  const groups = [], bySeries = new Map();
+  for (const entry of entries) {
+    if (entry.category !== 'Comics' || !entry.series?.trim()) {
+      groups.push({ type: 'entry', entry });
+      continue;
+    }
+    const key = `${entry.publisher || ''}\u0000${entry.series.trim()}`;
+    let group = bySeries.get(key);
+    if (!group) {
+      group = { type: 'series', key, title: entry.series.trim(), publisher: entry.publisher || '', entries: [] };
+      bySeries.set(key, group); groups.push(group);
+    }
+    group.entries.push(entry);
+  }
+  for (const group of bySeries.values()) group.entries.sort((a,b) => a.title.localeCompare(b.title, undefined, { numeric: true }));
+  return groups;
+}
