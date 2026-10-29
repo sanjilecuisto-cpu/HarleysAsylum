@@ -76,7 +76,7 @@ function renderSeriesPage() {
   const metadata=element('section','series-overview');metadata.append(element('h2','','About this series'));
   const formats=[...new Set(group.entries.map(e=>e.comicGeeks?.I).filter(Boolean))];
   const dates=group.entries.map(e=>e.releaseDate || e.comicGeeks?.D).filter(Boolean).sort();
-  for(const [label,value] of [['Publisher',group.publisher || 'Not provided'],['Series / run',group.title],['Format',formats.join(', ') || 'Not provided'],['Release dates in your data',dates.length ? `${dates[0]} – ${dates.at(-1)}` : 'Not provided'],['Owned issues / variants',summary.total],['Wishlist entries',group.entries.filter(e=>e.wishlisted).length]]) {
+  for(const [label,value] of [['Publisher',group.publisher || 'Not provided'],['Series / run',group.title],['Format',formats.join(', ') || 'Not provided'],['Release dates in your data',dates.length ? `${dates[0]} – ${dates.at(-1)}` : 'Not provided'],['Owned issues / variants',summary.total]]) {
     const row=element('div','stat-detail');row.append(element('span','',label),element('strong','',String(value)));metadata.append(row);
   }
   const completion=element('section','series-completion');completion.append(element('h2','','Series completion'),element('strong','completion-number',`${summary.read} / ${summary.total}`),element('p','stats-explainer',`${summary.percent}% · read issues / owned issues. Each owned variant is counted separately.`));
